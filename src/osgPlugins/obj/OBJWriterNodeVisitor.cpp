@@ -24,14 +24,15 @@
 /** writes all values of an array out to a stream, applies a matrix beforehand if necessary */
 class ValueVisitor : public osg::ValueVisitor {
     public:
-        ValueVisitor(std::ostream& fout, const osg::Matrix& m = osg::Matrix::identity(), bool isNormal = false) :
+        enum class ValueType { Auto, Normal, Color };
+        ValueVisitor(std::ostream& fout, const osg::Matrix& m = osg::Matrix::identity(), ValueType vt = ValueType::Auto) :
             osg::ValueVisitor(),
             _fout(fout),
             _m(m),
-            _isNormal(isNormal)
+            _valueType(vt)
         {
             _applyMatrix = (_m != osg::Matrix::identity());
-            if (_isNormal) _origin = osg::Vec3(0,0,0) * _m;
+            if (_valueType == ValueType::Normal) _origin = osg::Vec3(0,0,0) * _m;
         }
 
         virtual void apply (osg::Vec2 & inv)
@@ -41,10 +42,39 @@ class ValueVisitor : public osg::ValueVisitor {
 
         virtual void apply (osg::Vec3 & inv)
         {
-            osg::Vec3 v(inv);
-            if (_applyMatrix)  v = (_isNormal) ? (v * _m) - _origin : v * _m;
-            _fout << v[0] << ' ' << v[1] << ' ' << v[2];
+            // use double so matrix transform precision is preserved
+			osg::Vec3d v(inv);
+			osg::Vec3d orign_d((double)_origin.x(), (double)_origin.y(), (double)_origin.z());
+			if (_applyMatrix)  v = (_valueType == ValueType::Normal) ? (v * _m) - orign_d : v * _m;
+
+			//Setting 10-digit Significant Number
+			_fout.precision(10);
+			_fout << v[0] << ' ' << v[1] << ' ' << v[2];
         }
+
+		virtual void apply(osg::Vec4& inv)
+		{
+			//Setting 10-digit Significant Number
+			_fout.precision(10);
+			switch (_valueType)
+			{
+			case ValueType::Color:
+            {
+                _fout << inv[0] << ' ' << inv[1] << ' ' << inv[2]; // Write RGB
+                break;
+            }
+			case ValueType::Auto:
+			{
+				// use double so matrix transform precision is preserved
+				osg::Vec4d v(inv);
+				osg::Vec4d orign_d((double)_origin.x(), (double)_origin.y(), (double)_origin.z(), 0.0);
+				if (_applyMatrix)  v = (_valueType == ValueType::Normal) ? (v * _m) - orign_d : v * _m;
+				_fout << ' ' << v[0] << ' ' << v[1] << ' ' << v[2] << ' ' << v[3]; // Write XYZW
+				break;
+			}
+			}
+		}
+
 
         virtual void apply (osg::Vec2b & inv)
         {
@@ -54,7 +84,7 @@ class ValueVisitor : public osg::ValueVisitor {
         virtual void apply (osg::Vec3b & inv)
         {
             osg::Vec3 v(inv[0], inv[1], inv[2]);
-            if (_applyMatrix)  v = (_isNormal) ? (v * _m) - _origin : v * _m;
+            if (_applyMatrix)  v = (_valueType == ValueType::Normal) ? (v * _m) - _origin : v * _m;
             _fout << v[0] << ' ' << v[1] << ' ' << v[2];
         }
 
@@ -66,28 +96,52 @@ class ValueVisitor : public osg::ValueVisitor {
         virtual void apply (osg::Vec3s & inv)
         {
             osg::Vec3 v(inv[0], inv[1], inv[2]);
-            if (_applyMatrix)  v = (_isNormal) ? (v * _m) - _origin : v * _m;
+            if (_applyMatrix)  v = (_valueType == ValueType::Normal) ? (v * _m) - _origin : v * _m;
             _fout << v[0] << ' ' << v[1] << ' ' << v[2];
         }
-    
+
         //add Vec3dArray* vertex output to avoid inaccuracy
         virtual void apply(osg::Vec3d & inv)
         {
             osg::Vec3d v(inv[0], inv[1], inv[2]);
             osg::Vec3d orign_d((double)_origin.x(), (double)_origin.y(), (double)_origin.z());
-            if (_applyMatrix)  v = (_isNormal) ? (v * _m) - orign_d : v * _m;
+            if (_applyMatrix)  v = (_valueType == ValueType::Normal) ? (v * _m) - orign_d : v * _m;
 
             //Setting 10-digit Significant Number
             _fout.precision(10);
             _fout << v[0] << ' ' << v[1] << ' ' << v[2];
         }
+
+		//add Vec4dArray* vertex output to avoid inaccuracy
+		virtual void apply(osg::Vec4d& inv)
+		{
+			//Setting 10-digit Significant Number
+			_fout.precision(10);
+			switch (_valueType)
+			{
+			case ValueType::Color:
+				_fout << inv[0] << ' ' << inv[1] << ' ' << inv[2]; // Write RGB 
+				break;
+			case ValueType::Auto:
+			{
+				// use double so matrix transform precision is preserved
+				osg::Vec4d v(inv);
+				osg::Vec4d orign_d((double)_origin.x(), (double)_origin.y(), (double)_origin.z(), 0.0);
+				if (_applyMatrix)  v = (_valueType == ValueType::Normal) ? (v * _m) - orign_d : v * _m;
+				_fout << ' ' << v[0] << ' ' << v[1] << ' ' << v[2] << ' ' << v[3]; // Write XYZW 
+				break;
+			}
+			}
+		}
+
     private:
 
         ValueVisitor& operator = (const ValueVisitor&) { return *this; }
 
         std::ostream&    _fout;
         osg::Matrix        _m;
-        bool            _applyMatrix, _isNormal;
+        bool            _applyMatrix;
+        ValueType       _valueType;
         osg::Vec3        _origin;
 };
 
@@ -511,7 +565,7 @@ void OBJWriterNodeVisitor::processArray(const std::string& key, osg::Array* arra
     if (array == NULL)
         return;
 
-    ValueVisitor vv(_fout, m, isNormal);
+	ValueVisitor vv(_fout, m, isNormal ? ValueVisitor::ValueType::Normal : ValueVisitor::ValueType::Auto);
     _fout << std::endl;
     for(unsigned int i = 0; i < array->getNumElements(); ++i) {
         _fout << key << ' ';
@@ -520,6 +574,32 @@ void OBJWriterNodeVisitor::processArray(const std::string& key, osg::Array* arra
     }
 
     _fout << "# " << array->getNumElements() << " elements written" << std::endl;
+
+}
+
+void OBJWriterNodeVisitor::processVertexColorArrays(const std::string& key, osg::Array* vertices, osg::Array* colors, const osg::Matrix& m)
+{
+	if (vertices == NULL)
+		return;
+
+	unsigned int num_vertices = vertices->getNumElements();
+    unsigned int num_colors = colors->getNumElements();
+
+	ValueVisitor vv(_fout, m, ValueVisitor::ValueType::Auto);
+	ValueVisitor cv(_fout, m, ValueVisitor::ValueType::Color);
+	_fout << std::endl;
+	for (unsigned int i = 0; i < num_vertices; ++i) {
+		_fout << key << ' ';
+		vertices->accept(i, vv);
+        if (i < num_colors)
+        {
+            _fout << ' ';
+            colors->accept(i, cv);
+        }
+		_fout << std::endl;
+	}
+
+	_fout << "# " << vertices->getNumElements() << " elements written" << std::endl;
 
 }
 
@@ -550,7 +630,14 @@ void OBJWriterNodeVisitor::processGeometry(osg::Geometry* geo, osg::Matrix& m) {
 
     processStateSet(_currentStateSet.get());
 
-    processArray("v", geo->getVertexArray(), m, false);
+	osg::Array* colors = geo->getColorArray();
+	osg::Array* vertices = geo->getVertexArray();
+
+	if (colors && (colors->getNumElements() == vertices->getNumElements()))
+		processVertexColorArrays("v", vertices, colors, m);
+	else
+		processArray("v", vertices, m, false);
+
     processArray("vn", geo->getNormalArray(), m, true);
     processArray("vt", geo->getTexCoordArray(0)); // we support only tex-unit 0
     unsigned int normalIndex = 0;
@@ -564,8 +651,8 @@ void OBJWriterNodeVisitor::processGeometry(osg::Geometry* geo, osg::Matrix& m) {
         if(geo->getNormalArray() && geo->getNormalArray()->getBinding() == osg::Array::BIND_PER_PRIMITIVE_SET)
             ++normalIndex;
     }
-    if (geo->getVertexArray())
-        _lastVertexIndex += geo->getVertexArray()->getNumElements();
+    if (vertices)
+        _lastVertexIndex += vertices->getNumElements();
     if (geo->getNormalArray())
         _lastNormalIndex += geo->getNormalArray()->getNumElements();
     if(geo->getTexCoordArray(0))
@@ -584,7 +671,7 @@ void OBJWriterNodeVisitor::apply(osg::Geometry& geometry)
     popStateSet(geometry.getStateSet());
 }
 
-void OBJWriterNodeVisitor::apply( osg::Geode &node )
+void OBJWriterNodeVisitor::apply(osg::Geode &node)
 {
     pushStateSet(node.getStateSet());
     _nameStack.push_back(node.getName());
@@ -597,6 +684,3 @@ void OBJWriterNodeVisitor::apply( osg::Geode &node )
     popStateSet(node.getStateSet());
     _nameStack.pop_back();
 }
-
-
-

@@ -442,11 +442,14 @@ bool Model::readMTL(std::istream& fin)
                 {
                     if( !usingDissolve )
                     {
-                        float alpha=1.0f;
-                        unsigned int fieldsRead = sscanf(line+3,"%f", &alpha);
+                        float transparency=0.0f;
+                        unsigned int fieldsRead = sscanf(line+3,"%f", &transparency);
 
                         if (fieldsRead==1)
-                        {
+						{
+							float alpha = 1.0f - transparency;
+							if (alpha < 0.0f) alpha = 0.0f;
+							else if (alpha > 1.0f) alpha = 1.0f;
                             material->ambient[3] = alpha;
                             material->diffuse[3] = alpha;
                             material->specular[3] = alpha;
@@ -573,7 +576,7 @@ bool Model::readOBJ(std::istream& fin, const osgDB::ReaderWriter::Options* optio
 
     const int LINE_SIZE = 4096;
     char line[LINE_SIZE];
-    float x = 0.0f, y = 0.0f, z = 0.0f, w = 0.0f;
+    double x = 0.0, y = 0.0, z = 0.0, w = 0.0;
     float r,g,b,a;
 
     while (fin)
@@ -615,30 +618,30 @@ bool Model::readOBJ(std::istream& fin, const osgDB::ReaderWriter::Options* optio
         {
             if (strncmp(line,"v ",2)==0)
             {
-                unsigned int fieldsRead = sscanf(line+2,"%f %f %f %f %f %f %f", &x, &y, &z, &w, &g, &b, &a);
+                unsigned int fieldsRead = sscanf(line+2,"%lf %lf %lf %lf %f %f %f", &x, &y, &z, &w, &g, &b, &a);
 
                 if (fieldsRead==1)
-                    vertices.push_back(osg::Vec3(x,0.0f,0.0f));
+                    vertices.push_back(VecType(x,0.0,0.0));
                 else if (fieldsRead==2)
-                    vertices.push_back(osg::Vec3(x,y,0.0f));
+                    vertices.push_back(VecType(x,y,0.0));
                 else if (fieldsRead==3)
-                    vertices.push_back(osg::Vec3(x,y,z));
+                    vertices.push_back(VecType(x,y,z));
                 else if (fieldsRead == 4)
-                    vertices.push_back(osg::Vec3(x/w,y/w,z/w));
+                    vertices.push_back(VecType(x/w,y/w,z/w));
                 else if (fieldsRead == 6)
                 {
-                    vertices.push_back(osg::Vec3(x,y,z));
+                    vertices.push_back(VecType(x,y,z));
                     colors.push_back(osg::Vec4(w, g, b, 1.0));
                 }
                 else if ( fieldsRead == 7 )
                 {
-                    vertices.push_back(osg::Vec3(x,y,z));
+                    vertices.push_back(VecType(x,y,z));
                     colors.push_back(osg::Vec4(w, g, b, a));
                 }
             }
             else if (strncmp(line,"vn ",3)==0)
             {
-                unsigned int fieldsRead = sscanf(line+3,"%f %f %f", &x, &y, &z);
+                unsigned int fieldsRead = sscanf(line+3,"%lf %lf %lf", &x, &y, &z);
 
                 if (fieldsRead==1) normals.push_back(osg::Vec3(x,0.0f,0.0f));
                 else if (fieldsRead==2) normals.push_back(osg::Vec3(x,y,0.0f));
@@ -646,7 +649,7 @@ bool Model::readOBJ(std::istream& fin, const osgDB::ReaderWriter::Options* optio
             }
             else if (strncmp(line,"vt ",3)==0)
             {
-                unsigned int fieldsRead = sscanf(line+3,"%f %f %f", &x, &y, &z);
+                unsigned int fieldsRead = sscanf(line+3,"%lf %lf %lf", &x, &y, &z);
 
                 if (fieldsRead==1) texcoords.push_back(osg::Vec2(x,0.0f));
                 else if (fieldsRead==2) texcoords.push_back(osg::Vec2(x,y));
@@ -873,9 +876,9 @@ osg::Vec3 Model::computeNormal(const Element& element) const
     osg::Vec3 normal;
     for(unsigned int i=0;i<element.vertexIndices.size()-2;++i)
     {
-        osg::Vec3 a = vertices[element.vertexIndices[i]];
-        osg::Vec3 b = vertices[element.vertexIndices[i+1]];
-        osg::Vec3 c = vertices[element.vertexIndices[i+2]];
+		const auto& a = vertices[element.vertexIndices[i]];
+		const auto& b = vertices[element.vertexIndices[i + 1]];
+		const auto& c = vertices[element.vertexIndices[i + 2]];
         osg::Vec3 localNormal = (b-a)   ^(c-b);
         normal += localNormal;
     }

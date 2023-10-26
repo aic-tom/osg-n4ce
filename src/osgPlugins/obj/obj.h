@@ -209,9 +209,11 @@ public:
     int remapNormalIndex(int vi) { return (vi<0) ? normals.size()+vi : vi-1; }
     int remapTexCoordIndex(int vi) { return (vi<0) ? texcoords.size()+vi : vi-1; }
 
+    typedef osg::Vec3d VecType;
+
     typedef std::map<std::string,Material>          MaterialMap;
     typedef std::vector< osg::Vec2 >                Vec2Array;
-    typedef std::vector< osg::Vec3 >                Vec3Array;
+    typedef std::vector< VecType >                  Vec3Array;
     typedef std::vector< osg::Vec4 >                Vec4Array;
     typedef std::vector< osg::ref_ptr<Element> >    ElementList;
     typedef std::map< ElementState,ElementList >    ElementStateMap;

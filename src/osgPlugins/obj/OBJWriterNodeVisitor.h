@@ -47,6 +47,7 @@
 #include <map>
 #include <set>
 
+
 class OBJWriterNodeVisitor: public osg::NodeVisitor {
 
     public:
@@ -139,7 +140,8 @@ class OBJWriterNodeVisitor: public osg::NodeVisitor {
         OBJWriterNodeVisitor& operator = (const OBJWriterNodeVisitor&) { return *this; }
 
         void processGeometry(osg::Geometry* geo, osg::Matrix& m);
-        void processArray(const std::string& key, osg::Array* array, const osg::Matrix& m = osg::Matrix::identity(), bool isNormal = false);
+		void processArray(const std::string& key, osg::Array* array, const osg::Matrix& m = osg::Matrix::identity(), bool isNormal = false);
+		void processVertexColorArrays(const std::string& key, osg::Array* vertices, osg::Array* colors, const osg::Matrix& m = osg::Matrix::identity());
 
         void processStateSet(osg::StateSet* stateset);
 

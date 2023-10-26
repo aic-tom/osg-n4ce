@@ -59,7 +59,7 @@ public:
     {
         supportsExtension("obj","Alias Wavefront OBJ format");
         supportsOption("noRotation","Do not do the default rotate about X axis");
-        supportsOption("noTesselateLargePolygons","Do not do the default tessellation of large polygons");
+        supportsOption("noTesselateLargePolygons","Do not do the default tesselation of large polygons");
         supportsOption("noTriStripPolygons","Do not do the default tri stripping of polygons");
         supportsOption("generateFacetNormals","generate facet normals for vertices without normals");
         supportsOption("noReverseFaces","avoid to reverse faces when normals and triangles orientation are reversed");
@@ -171,6 +171,10 @@ protected:
         bool outputTextureFiles;
         int specularExponent;
 
+        bool localCoords;
+        bool localOffsetSet;
+        osg::Vec3d localOffset;
+
         ObjOptionsStruct()
         {
             rotate = true;
@@ -181,6 +185,8 @@ protected:
             noReverseFaces = false;
             precision = std::numeric_limits<double>::digits10 + 2;
             outputTextureFiles = false;
+            localCoords = false;
+            localOffsetSet = false;
             specularExponent = -1;
         }
     };
@@ -450,6 +456,11 @@ void ReaderWriterOBJ::buildMaterialToStateSetMap(obj::Model& model, MaterialToSt
 
 osg::Geometry* ReaderWriterOBJ::convertElementListToGeometry(obj::Model& model, obj::Model::ElementList& elementList, ObjOptionsStruct& localOptions) const
 {
+    if (localOptions.localCoords && !localOptions.localOffsetSet && !model.vertices.empty())
+    {
+		localOptions.localOffset = model.vertices.front();
+		localOptions.localOffsetSet = true;
+    }
 
     unsigned int numVertexIndices = 0;
     unsigned int numNormalIndices = 0;
@@ -476,13 +487,13 @@ osg::Geometry* ReaderWriterOBJ::convertElementListToGeometry(obj::Model& model, 
                 int b = element.vertexIndices[1];
                 int c = element.vertexIndices[2];
 
-                osg::Vec3f ab(model.vertices[b]);
-                osg::Vec3f ac(model.vertices[c]);
+                obj::Model::VecType ab(model.vertices[b]);
+                obj::Model::VecType ac(model.vertices[c]);
 
                 ab -= model.vertices[a];
                 ac -= model.vertices[a];
 
-                osg::Vec3f Norm( ab ^ ac );
+                obj::Model::VecType Norm( ab ^ ac );
                 Norm.normalize();
                 int normal_idx = model.normals.size();
                 model.normals.push_back(Norm);
@@ -553,6 +564,8 @@ osg::Geometry* ReaderWriterOBJ::convertElementListToGeometry(obj::Model& model, 
         geometry->setColorArray(colors, osg::Array::BIND_PER_VERTEX);
     }
 
+	bool bUseLocalOffset{ localOptions.localCoords && localOptions.localOffsetSet };
+
     if (numPointElements>0)
     {
         unsigned int startPos = vertices->size();
@@ -573,7 +586,10 @@ osg::Geometry* ReaderWriterOBJ::convertElementListToGeometry(obj::Model& model, 
                     {
                         colors->push_back(model.colors[*index_itr]);
                     }
-                    vertices->push_back(transformVertex(model.vertices[*index_itr],localOptions.rotate));
+                    if(bUseLocalOffset)
+                        vertices->push_back(transformVertex(model.vertices[*index_itr] - localOptions.localOffset,localOptions.rotate));
+					else
+						vertices->push_back(transformVertex(model.vertices[*index_itr], localOptions.rotate));
                     ++numPoints;
                 }
                 if (numNormalIndices)
@@ -625,7 +641,10 @@ osg::Geometry* ReaderWriterOBJ::convertElementListToGeometry(obj::Model& model, 
                         colors->push_back(model.colors[*index_itr]);
                     }
 
-                    vertices->push_back(transformVertex(model.vertices[*index_itr],localOptions.rotate));
+					if (bUseLocalOffset)
+                        vertices->push_back(transformVertex(model.vertices[*index_itr] - localOptions.localOffset,localOptions.rotate));
+					else
+						vertices->push_back(transformVertex(model.vertices[*index_itr], localOptions.rotate));
                 }
                 if (numNormalIndices)
                 {
@@ -702,7 +721,10 @@ osg::Geometry* ReaderWriterOBJ::convertElementListToGeometry(obj::Model& model, 
                             colors->push_back(model.colors[*index_itr]);
                         }
 
-                        vertices->push_back(transformVertex(model.vertices[*index_itr],localOptions.rotate));
+						if (bUseLocalOffset)
+							vertices->push_back(transformVertex(model.vertices[*index_itr] - localOptions.localOffset, localOptions.rotate));
+						else
+							vertices->push_back(transformVertex(model.vertices[*index_itr], localOptions.rotate));
                     }
                     if (numNormalIndices)
                     {
@@ -738,7 +760,10 @@ osg::Geometry* ReaderWriterOBJ::convertElementListToGeometry(obj::Model& model, 
                             colors->push_back(model.colors[*index_itr]);
                         }
 
-                        vertices->push_back(transformVertex(model.vertices[*index_itr],localOptions.rotate));
+						if (bUseLocalOffset)
+							vertices->push_back(transformVertex(model.vertices[*index_itr] - localOptions.localOffset, localOptions.rotate));
+						else
+							vertices->push_back(transformVertex(model.vertices[*index_itr], localOptions.rotate));
                     }
                     if (numNormalIndices)
                     {
@@ -776,7 +801,11 @@ osg::Node* ReaderWriterOBJ::convertModelToSceneGraph(obj::Model& model, ObjOptio
 
     if (model.elementStateMap.empty()) return 0;
 
-    osg::Group* group = new osg::Group;
+    osg::Group* group = nullptr;
+    if (localOptions.localCoords)
+        group = new osg::MatrixTransform;
+    else 
+        group = new osg::Group;
 
     // set up the materials
     MaterialToStateSetMap materialToStateSetMap;
@@ -846,6 +875,13 @@ osg::Node* ReaderWriterOBJ::convertModelToSceneGraph(obj::Model& model, ObjOptio
         }
     }
 
+    if (localOptions.localCoords && localOptions.localOffsetSet)
+    {
+        osg::MatrixTransform* matTransform = dynamic_cast<osg::MatrixTransform*>(group);
+        if (matTransform)
+            matTransform->setMatrix(osg::Matrix::translate(localOptions.localOffset));
+    }
+
     return group;
 }
 
@@ -897,7 +933,11 @@ ReaderWriterOBJ::ObjOptionsStruct ReaderWriterOBJ::parseOptions(const osgDB::Rea
             else if (pre_equals == "OutputTextureFiles")
             {
                 localOptions.outputTextureFiles = true;
-            }
+			}
+			else if (pre_equals == "localCoords")
+			{
+				localOptions.localCoords = true;
+			}
             else if (pre_equals == "precision")
             {
                 int val = std::atoi(post_equals.c_str());
