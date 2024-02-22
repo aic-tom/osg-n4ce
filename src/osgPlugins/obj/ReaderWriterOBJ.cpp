@@ -680,6 +680,8 @@ osg::Geometry* ReaderWriterOBJ::convertElementListToGeometry(obj::Model& model, 
         #ifdef USE_DRAWARRAYLENGTHS
             osg::DrawArrayLengths* drawArrayLengths = new osg::DrawArrayLengths(GL_POLYGON,startPos);
             geometry->addPrimitiveSet(drawArrayLengths);
+        #else
+            PrimitiveSetList primitiveSets;
         #endif
 
         for(itr=elementList.begin();
@@ -696,13 +698,13 @@ osg::Geometry* ReaderWriterOBJ::convertElementListToGeometry(obj::Model& model, 
                     {
                         osg::DrawArrays* drawArrays = new osg::DrawArrays(GL_POLYGON,startPos,element.vertexIndices.size());
                         startPos += element.vertexIndices.size();
-                        geometry->addPrimitiveSet(drawArrays);
+                        primitiveSets.push_back(drawArrays);
                     }
                     else
                     {
                         osg::DrawArrays* drawArrays = new osg::DrawArrays(GL_TRIANGLE_FAN,startPos,element.vertexIndices.size());
-                        startPos += element.vertexIndices.size();
-                        geometry->addPrimitiveSet(drawArrays);
+						startPos += element.vertexIndices.size();
+						primitiveSets.push_back(drawArrays);
                     }
                 #endif
 
@@ -786,6 +788,10 @@ osg::Geometry* ReaderWriterOBJ::convertElementListToGeometry(obj::Model& model, 
                 }
             }
         }
+
+        #ifndef USE_DRAWARRAYLENGTHS
+            geometry->setPrimitiveSetList(primitiveSets);
+        #endif
     }
 
     if(hasReversedFaces)
